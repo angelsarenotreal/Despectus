@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Env / secrets
+.env
+config_template/.env
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Inno setup output
+installer_out/
+
+# OS
+.DS_Store
+Thumbs.db
