@@ -113,32 +113,49 @@ def build_match_row(
     )
 
 
-def main():
+def ensure_api_key(win: MainWindow):
+    """
+    Loads settings and ensures RIOT_API_KEY exists.
+    If missing, prompts once and saves to %APPDATA%\\Despectus\\.env.
+    Never references undefined variables (fixes 'ok' UnboundLocalError).
+    """
     settings = load_settings()
 
+    # already have a key
+    if settings.riot_api_key:
+        return settings
+
+    key, accepted = QInputDialog.getText(
+        win,
+        "Riot API Key Required",
+        "Paste your RIOT_API_KEY (stored in %APPDATA%\\Despectus\\.env):",
+        QLineEdit.Password,
+        ""
+    )
+
+    if accepted and key.strip():
+        save_api_key_to_appdata(key.strip())
+        return load_settings()
+
+    # user cancelled or empty
+    win.set_status("Missing RIOT_API_KEY. You can add it in %APPDATA%\\Despectus\\.env")
+    return settings
+
+
+def main():
     app = QApplication([])
     win = MainWindow()
     win.apply_theme()
     win.show()
 
-    #   settings.refresh_seconds = 300  # 5 min auto refresh (you can disable later if you want)
-    if not settings.riot_api_key:
-        key, ok = QInputDialog.getText(
-            win,
-            "Riot API Key Required",
-            "Paste your RIOT_API_KEY (stored in %APPDATA%\\Despectus\\.env):",
-            QLineEdit.Password,
-            ""
-        )
-    if ok and key.strip():
-        save_api_key_to_appdata(key.strip())
-        settings = load_settings()
-    else:
-        win.set_status("Missing RIOT_API_KEY. Please add it to %APPDATA%\\Despectus\\.env")
+    # Safe settings load + one-time prompt (no ok/key scope issues)
+    settings = ensure_api_key(win)
 
+    # Cache DDragon data
     dd_version = get_latest_version()
     champ_map = get_champion_id_map(dd_version)
 
+    # UI: avg LP
     win.set_avg_lp(settings.avg_lp_per_win)
 
     last_rank_state = {"ranked_obj": None, "next_label": None}
@@ -232,6 +249,7 @@ def main():
         else:
             win.clear_rank_emblem()
 
+        # If key missing, keep UI working but skip Riot endpoints
         if not settings.riot_api_key:
             win.set_status(f"Connected: {platform} • {riot_id} • Missing RIOT_API_KEY")
             return

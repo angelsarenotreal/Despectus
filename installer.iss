@@ -1,5 +1,5 @@
 #define MyAppName "Despectus"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Despectus"
 #define MyAppExeName "Despectus.exe"
 
@@ -12,7 +12,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer_out
-OutputBaseFilename=Despectus-Setup
+OutputBaseFilename=Despectus-Setup-1.0.1
 Compression=lzma
 SolidCompression=yes
 SetupIconFile=assets\despectus.ico
