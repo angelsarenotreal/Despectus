@@ -2,7 +2,7 @@
 
 A dark themed League of Legends dashboard.
 
-## Feature list
+## Features
 #### [Account & Profile]
 - Automatically detects your logged-in League account
 - Displays **Riot ID, profile icon, and summoner level**
