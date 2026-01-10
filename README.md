@@ -41,7 +41,7 @@ A dark themed League of Legends dashboard.
 - Download and install the latest version to update.
 
 ## Download
-Go to the **Releases** page and download `Despectus-Setup.exe`.
+Go to the **Releases** page and download `Despectus-Setup-*.exe`.
 
 ## Install
 Run the installer and follow the steps.
