@@ -13,7 +13,7 @@ A dark themed League of Legends dashboard.
 - Dynamically calculates **“To next” division** (e.g. *Platinum II → Platinum I*, *Master → Grandmaster*)
 - Displays **rank emblem** when ranked (hidden if Unranked)
 
-#### [Progress Estimation]
+#### [Progress Estimation] (being worked on)
 - Estimates **games needed to rank up** based on current LP
 - **User-configurable Avg LP per Win**
 - Updates instantly and persists between sessions
@@ -36,7 +36,7 @@ A dark themed League of Legends dashboard.
 - Runs **100% locally**
 - No tracking, no ads, no external servers
 
-#### [Updates]
+#### [Updates] (implemented soon)
 - Despectus is distributed through **GitHub Releases**.  
 - Download and install the latest version to update.
 
