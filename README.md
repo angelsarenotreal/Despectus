@@ -37,8 +37,8 @@ A dark themed League of Legends dashboard.
 - No tracking, no ads, no external servers
 
 #### [Updates]
-Despectus is distributed through **GitHub Releases**.  
-Download and install the latest version to update.
+- Despectus is distributed through **GitHub Releases**.  
+- Download and install the latest version to update.
 
 ## Download
 Go to the **Releases** page and download `Despectus-Setup.exe`.
