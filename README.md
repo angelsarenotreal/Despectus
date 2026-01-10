@@ -8,12 +8,12 @@ A dark themed League of Legends dashboard.
 - Displays **Riot ID, profile icon, and summoner level**
 - Uses **personal Riot API keys** (per user)
 
-#### [Ranked Overview]
+#### [Ranked Overview] (there is an issue with the "To next division", will be resolved soon)
 - Shows **current Solo/Duo rank**, LP, winrate, and W/L
 - Dynamically calculates **“To next” division** (e.g. *Platinum II → Platinum I*, *Master → Grandmaster*)
 - Displays **rank emblem** when ranked (hidden if Unranked)
 
-#### [Progress Estimation] (being worked on)
+#### [Progress Estimation] 
 - Estimates **games needed to rank up** based on current LP
 - **User-configurable Avg LP per Win**
 - Updates instantly and persists between sessions
