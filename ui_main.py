@@ -1,9 +1,8 @@
 from __future__ import annotations
 from typing import List, Optional, Tuple
 
-import requests
 from PySide6.QtCore import Qt, QSize, QPoint, Property, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QPixmap, QColor, QPainter, QPen, QBrush, QFontMetrics
+from PySide6.QtGui import QPixmap, QImage, QColor, QPainter, QPen, QBrush, QFontMetrics
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -24,34 +23,59 @@ from model import RankedSnapshot, MatchRow
 
 
 # -----------------------
-# Image cache
+# Image helpers (NO requests here)
 # -----------------------
-_IMAGE_CACHE: dict[str, QPixmap] = {}
-
-
-def _pixmap_from_url(url: str, size: int) -> QPixmap:
-    key = f"{url}|{size}"
-    if key in _IMAGE_CACHE:
-        return _IMAGE_CACHE[key]
-    try:
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        pix = QPixmap()
-        pix.loadFromData(r.content)
-        out = pix.scaled(QSize(size, size), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        _IMAGE_CACHE[key] = out
-        return out
-    except Exception:
+def _pixmap_from_bytes(raw: bytes, size: int, crop_transparent: bool = False) -> QPixmap:
+    if not raw:
         return QPixmap()
 
+    img = QImage()
+    if not img.loadFromData(raw):
+        return QPixmap()
+
+    # Ensure alpha channel exists (needed for transparency cropping)
+    if img.format() not in (QImage.Format_ARGB32, QImage.Format_RGBA8888):
+        img = img.convertToFormat(QImage.Format_ARGB32)
+
+    if crop_transparent:
+        w, h = img.width(), img.height()
+
+        left, right = w, -1
+        top, bottom = h, -1
+
+        # Scan alpha to find non-transparent bounds
+        for y in range(h):
+            for x in range(w):
+                if (img.pixel(x, y) >> 24) & 0xFF:  # alpha > 0
+                    if x < left:
+                        left = x
+                    if x > right:
+                        right = x
+                    if y < top:
+                        top = y
+                    if y > bottom:
+                        bottom = y
+
+        # Crop if any visible pixels found
+        if right >= left and bottom >= top:
+            pad = 2
+            left = max(0, left - pad)
+            top = max(0, top - pad)
+            right = min(w - 1, right + pad)
+            bottom = min(h - 1, bottom + pad)
+            img = img.copy(left, top, right - left + 1, bottom - top + 1)
+
+    pix = QPixmap.fromImage(img)
+    return pix.scaled(QSize(size, size), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
 
 # -----------------------
-# Styling (unchanged content sizes, tighter boxes)
+# Styling
 # -----------------------
 BASE_FONT = 14
 TITLE_FONT = 24
 METRIC_FONT = 18
-MINITITLE_FONT = 14
+MINITITLE_FONT = 13  # slightly smaller (looks cleaner)
 
 DARK_QSS = f"""
 QMainWindow, QWidget {{
@@ -72,7 +96,8 @@ QWidget#TitleBar {{
   border-bottom: 1px solid #ffffff;
 }}
 
-QLabel#Subtle {{ color: #d8d8d8; }}
+QLabel#Subtle {{ color: #cfcfcf; }}
+QLabel#Faint {{ color: #9a9a9a; }}
 
 QLabel#Title {{
   font-size: {TITLE_FONT}px;
@@ -93,7 +118,7 @@ QPushButton#RefreshBtn {{
   background-color: #000000;
   border: 1px solid #ffffff;
   border-radius: 0px;
-  padding: 8px 14px;
+  padding: 6px 10px;
 }}
 QPushButton#RefreshBtn:hover {{ background-color: #101010; }}
 QPushButton#RefreshBtn:pressed {{ background-color: #151515; }}
@@ -102,6 +127,11 @@ QWidget#Card {{
   background-color: #000000;
   border: 1px solid #ffffff;
   border-radius: 0px;
+}}
+
+QWidget#IconFrame {{
+  background-color: #000000;
+  border: 1px solid #ffffff;
 }}
 
 QSpinBox {{
@@ -115,11 +145,11 @@ QSpinBox {{
 QTableWidget {{
   background-color: #000000;
   border: 1px solid #ffffff;
-  gridline-color: #222222;
+  gridline-color: #1c1c1c;
   border-radius: 0px;
 }}
 QTableWidget::item {{
-  border-bottom: 1px solid #111111;
+  border-bottom: 1px solid #0f0f0f;
   padding: 2px 6px;
 }}
 QTableWidget::item:selected {{ background-color: #000000; }}
@@ -137,9 +167,6 @@ QHeaderView::section {{
 # Animated window button
 # -----------------------
 class AnimatedWinButton(QPushButton):
-    """
-    Custom painted button with smooth hover animation.
-    """
     def __init__(self, text: str, close_variant: bool = False):
         super().__init__(text)
         self.setCursor(Qt.ArrowCursor)
@@ -150,10 +177,10 @@ class AnimatedWinButton(QPushButton):
         self._pressed = False
         self._close_variant = close_variant
 
-        self.setFixedSize(54, 36)
+        self.setFixedSize(42, 30)
 
         self._anim = QPropertyAnimation(self, b"hoverProgress", self)
-        self._anim.setDuration(140)
+        self._anim.setDuration(130)
         self._anim.setEasingCurve(QEasingCurve.OutCubic)
 
     def enterEvent(self, e):
@@ -193,12 +220,10 @@ class AnimatedWinButton(QPushButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, False)
 
-        # Colors
         base_bg = QColor(0, 0, 0)
         hover_bg = QColor(16, 16, 16) if not self._close_variant else QColor(34, 0, 0)
         press_bg = QColor(21, 21, 21) if not self._close_variant else QColor(48, 0, 0)
 
-        # Blend background based on hover
         if self._pressed:
             bg = press_bg
         else:
@@ -208,29 +233,21 @@ class AnimatedWinButton(QPushButton):
                 int(base_bg.blue() + (hover_bg.blue() - base_bg.blue()) * self._hover),
             )
 
-        # Draw background
         p.fillRect(self.rect(), QBrush(bg))
-
-        # Border
         p.setPen(QPen(QColor(255, 255, 255), 1))
         p.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
-        # Text
         p.setPen(QColor(255, 255, 255))
         fm = QFontMetrics(self.font())
         text = self.text()
         tw = fm.horizontalAdvance(text)
         th = fm.height()
-        p.drawText(
-            (self.width() - tw) // 2,
-            (self.height() + th) // 2 - fm.descent(),
-            text
-        )
+        p.drawText((self.width() - tw) // 2, (self.height() + th) // 2 - fm.descent(), text)
         p.end()
 
 
 # -----------------------
-# Title bar
+# Title bar (no maximize)
 # -----------------------
 class TitleBar(QWidget):
     def __init__(self, parent: "MainWindow"):
@@ -239,30 +256,23 @@ class TitleBar(QWidget):
         self._parent = parent
         self._drag_pos: Optional[QPoint] = None
 
-        self.setFixedHeight(56)
+        self.setFixedHeight(46)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 8, 14, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(10)
 
-        # App title inside topbar (left)
         self.app_title = QLabel("Despectus")
         self.app_title.setObjectName("MiniTitle")
 
-        # Status
         self.status = QLabel("Waiting for League Client…")
         self.status.setObjectName("Subtle")
 
-        # Refresh
-        self.refresh_btn = QPushButton("Refresh Now")
+        self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setObjectName("RefreshBtn")
 
-        # Window buttons
         self.btn_min = AnimatedWinButton("—", close_variant=False)
         self.btn_min.clicked.connect(parent.showMinimized)
-
-        self.btn_max = AnimatedWinButton("▢", close_variant=False)
-        self.btn_max.clicked.connect(parent.toggle_max_restore)
 
         self.btn_close = AnimatedWinButton("✕", close_variant=True)
         self.btn_close.clicked.connect(parent.close)
@@ -271,10 +281,8 @@ class TitleBar(QWidget):
         layout.addSpacing(8)
         layout.addWidget(self.status, 1)
         layout.addWidget(self.refresh_btn)
-
         layout.addSpacing(10)
         layout.addWidget(self.btn_min)
-        layout.addWidget(self.btn_max)
         layout.addWidget(self.btn_close)
 
     def mousePressEvent(self, e):
@@ -284,12 +292,6 @@ class TitleBar(QWidget):
 
     def mouseMoveEvent(self, e):
         if self._drag_pos and e.buttons() & Qt.LeftButton:
-            if self._parent.isMaximized():
-                self._parent.showNormal()
-                self._parent._is_maximized = False
-                self._parent._sync_max_button()
-                self._drag_pos = e.globalPosition().toPoint()
-
             delta = e.globalPosition().toPoint() - self._drag_pos
             self._parent.move(self._parent.pos() + delta)
             self._drag_pos = e.globalPosition().toPoint()
@@ -298,11 +300,6 @@ class TitleBar(QWidget):
     def mouseReleaseEvent(self, e):
         self._drag_pos = None
         super().mouseReleaseEvent(e)
-
-    def mouseDoubleClickEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            self._parent.toggle_max_restore()
-        super().mouseDoubleClickEvent(e)
 
 
 # -----------------------
@@ -314,7 +311,6 @@ class MainWindow(QMainWindow):
 
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self._is_maximized = False
 
         self.window_frame = QWidget()
         self.window_frame.setObjectName("WindowFrame")
@@ -330,24 +326,18 @@ class MainWindow(QMainWindow):
         root = QWidget()
         frame_layout.addWidget(root, 1)
 
-        # Slightly smaller window (boxes tighter), content sizes unchanged
         self.resize(1220, 800)
         self.setMinimumSize(1120, 740)
 
-        # expose titlebar widgets
         self.status = self.title_bar.status
         self.refresh_btn = self.title_bar.refresh_btn
         self.refresh_btn.clicked.connect(lambda: self.on_manual_refresh())
 
-        # -------------------
-        # Cards (reduced padding/spacing ONLY)
-        # -------------------
-
-        # Profile
+        # ---------- Profile card ----------
         self.profile_card = QWidget()
         self.profile_card.setObjectName("Card")
         p_outer = QVBoxLayout(self.profile_card)
-        p_outer.setContentsMargins(14, 10, 14, 12)  # smaller box padding
+        p_outer.setContentsMargins(14, 10, 14, 12)
         p_outer.setSpacing(8)
 
         p_title = QLabel("[Profile]")
@@ -358,9 +348,16 @@ class MainWindow(QMainWindow):
         p_center.setContentsMargins(0, 0, 0, 0)
         p_center.setSpacing(16)
 
+        self.icon_frame = QWidget()
+        self.icon_frame.setObjectName("IconFrame")
+        self.icon_frame.setFixedSize(74, 74)
+        icon_frame_l = QVBoxLayout(self.icon_frame)
+        icon_frame_l.setContentsMargins(1, 1, 1, 1)
+
         self.icon = QLabel()
         self.icon.setFixedSize(72, 72)
         self.icon.setAlignment(Qt.AlignCenter)
+        icon_frame_l.addWidget(self.icon)
 
         self.riot_id = QLabel("—")
         self.riot_id.setObjectName("Title")
@@ -373,16 +370,15 @@ class MainWindow(QMainWindow):
         name_box.addWidget(self.riot_id)
         name_box.addWidget(self.level)
 
-        p_center.addWidget(self.icon)
+        p_center.addWidget(self.icon_frame)
         p_center.addLayout(name_box)
         p_center.addStretch(1)
 
-        # keep this centered vertically without extra “empty top” feel
         p_outer.addStretch(1)
         p_outer.addLayout(p_center)
         p_outer.addStretch(1)
 
-        # Rank
+        # ---------- Rank card ----------
         self.ranked_card = QWidget()
         self.ranked_card.setObjectName("Card")
         r_outer = QVBoxLayout(self.ranked_card)
@@ -397,13 +393,20 @@ class MainWindow(QMainWindow):
         r_row.setContentsMargins(0, 0, 0, 0)
         r_row.setSpacing(16)
 
+        self.emblem_frame = QWidget()
+        self.emblem_frame.setObjectName("IconFrame")
+        self.emblem_frame.setFixedSize(74, 74)
+        ef_l = QVBoxLayout(self.emblem_frame)
+        ef_l.setContentsMargins(1, 1, 1, 1)
+
         self.rank_emblem = QLabel()
-        self.rank_emblem.setFixedSize(90, 90)
+        self.rank_emblem.setFixedSize(72, 72)
         self.rank_emblem.setAlignment(Qt.AlignCenter)
+        ef_l.addWidget(self.rank_emblem)
 
         r_grid = QGridLayout()
-        r_grid.setHorizontalSpacing(26)
-        r_grid.setVerticalSpacing(8)
+        r_grid.setHorizontalSpacing(22)
+        r_grid.setVerticalSpacing(6)
 
         self.rank_line = QLabel("Rank: —")
         self.rank_line.setObjectName("Title")
@@ -421,14 +424,14 @@ class MainWindow(QMainWindow):
         self.est_line.setObjectName("Subtle")
 
         self.avg_lp_label = QLabel("Avg LP/W:")
-        self.avg_lp_label.setObjectName("Subtle")
+        self.avg_lp_label.setObjectName("Faint")
 
         self.avg_lp_spin = QSpinBox()
         self.avg_lp_spin.setRange(1, 60)
         self.avg_lp_spin.setValue(22)
         self.avg_lp_spin.setKeyboardTracking(False)
         self.avg_lp_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.avg_lp_spin.setFixedWidth(44)
+        self.avg_lp_spin.setFixedWidth(48)
 
         r_grid.addWidget(self.rank_line, 0, 0, 1, 2)
         r_grid.addWidget(self.lp_line, 1, 0)
@@ -438,13 +441,12 @@ class MainWindow(QMainWindow):
         r_grid.addWidget(self.avg_lp_label, 3, 0)
         r_grid.addWidget(self.avg_lp_spin, 3, 1)
 
-        r_row.addWidget(self.rank_emblem)
+        r_row.addWidget(self.emblem_frame, 0, Qt.AlignVCenter)
         r_row.addLayout(r_grid)
         r_row.addStretch(1)
-
         r_outer.addLayout(r_row)
 
-        # Stats
+        # ---------- Stats card ----------
         self.strip_stats = QWidget()
         self.strip_stats.setObjectName("Card")
         s_outer = QVBoxLayout(self.strip_stats)
@@ -466,8 +468,11 @@ class MainWindow(QMainWindow):
 
         self.s_wl = QLabel("W/L: —")
         self.s_wl.setObjectName("Subtle")
-        self.s_avgcs = QLabel("Avg CS: —")
+
+        # ✅ renamed
+        self.s_avgcs = QLabel("Avg CS/min: —")
         self.s_avgcs.setObjectName("Subtle")
+
         self.s_avgdur = QLabel("Avg Dur: —")
         self.s_avgdur.setObjectName("Subtle")
         self.s_bestkda = QLabel("Best KDA: —")
@@ -479,10 +484,9 @@ class MainWindow(QMainWindow):
         s_grid.addWidget(self.s_avgcs, 1, 1)
         s_grid.addWidget(self.s_avgdur, 2, 0)
         s_grid.addWidget(self.s_bestkda, 2, 1)
-
         s_outer.addLayout(s_grid)
 
-        # Most Played
+        # ---------- Most Played card ----------
         self.strip_champs = QWidget()
         self.strip_champs.setObjectName("Card")
         c_outer = QVBoxLayout(self.strip_champs)
@@ -498,18 +502,17 @@ class MainWindow(QMainWindow):
         c_row.setSpacing(14)
 
         self.c_sub = QLabel("Top 3 champs")
-        self.c_sub.setObjectName("Subtle")
+        self.c_sub.setObjectName("Faint")
         c_row.addWidget(self.c_sub)
         c_row.addStretch(1)
 
-        # Bigger icons in Most Played
         self.champ_icon_labels = []
         self.champ_count_labels = []
         for _ in range(3):
             col = QVBoxLayout()
             col.setSpacing(4)
             icon = QLabel()
-            icon.setFixedSize(56, 56)   # bumped
+            icon.setFixedSize(56, 56)
             icon.setAlignment(Qt.AlignCenter)
             count = QLabel("—")
             count.setAlignment(Qt.AlignCenter)
@@ -522,10 +525,11 @@ class MainWindow(QMainWindow):
 
         c_outer.addLayout(c_row)
 
-        # Games
+        # ---------- Games table ----------
         games_title = QLabel("[Games]")
         games_title.setObjectName("MiniTitle")
 
+        # ✅ removed CS/M column: now 5 columns
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["", "W/L", "K/D/A", "CS", "Duration"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -533,25 +537,21 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
 
-        # Bigger champ icons in Games
         self.table.setIconSize(QSize(40, 40))
-
-        # non-interactive feel
         self.table.setFocusPolicy(Qt.NoFocus)
         self.table.setSelectionMode(QTableWidget.NoSelection)
 
-        # row height to fit larger icon
         self.table.verticalHeader().setDefaultSectionSize(46)
 
-        # -------------------
-        # Root layout (reduce empty space between boxes)
-        # -------------------
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
         layout = QVBoxLayout(root)
         layout.setContentsMargins(14, 10, 14, 14)
-        layout.setSpacing(6)  # tighter gaps between rows
+        layout.setSpacing(6)
 
         top = QHBoxLayout()
-        top.setSpacing(6)     # tighter gaps between cards
+        top.setSpacing(6)
         top.addWidget(self.profile_card, 2)
         top.addWidget(self.ranked_card, 3)
         layout.addLayout(top)
@@ -565,16 +565,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(games_title)
         layout.addWidget(self.table, 1)
 
-        # resize grip
         self._grip = QSizeGrip(self.window_frame)
         self._grip.setFixedSize(18, 18)
         self._grip.raise_()
 
         self._refresh_callback = None
+        self._set_games_table_fixed_rows(10)
 
-    # -------------------
-    # Window behaviors
-    # -------------------
     def resizeEvent(self, event):
         super().resizeEvent(event)
         margin = 2
@@ -583,24 +580,9 @@ class MainWindow(QMainWindow):
             self.window_frame.height() - self._grip.height() - margin,
         )
 
-    def toggle_max_restore(self):
-        if self._is_maximized:
-            self.showNormal()
-            self._is_maximized = False
-        else:
-            self.showMaximized()
-            self._is_maximized = True
-        self._sync_max_button()
-
-    def _sync_max_button(self):
-        self.title_bar.btn_max.setText("❐" if self._is_maximized else "▢")
-
     def apply_theme(self):
         self.setStyleSheet(DARK_QSS)
 
-    # -------------------
-    # Callbacks
-    # -------------------
     def set_refresh_callback(self, fn):
         self._refresh_callback = fn
 
@@ -616,23 +598,18 @@ class MainWindow(QMainWindow):
         if self._refresh_callback:
             self._refresh_callback()
 
-    # -------------------
-    # UI setters
-    # -------------------
     def set_status(self, text: str):
         self.status.setText(text)
 
-    def set_profile(self, display_name: str, riot_id: str, level: int, icon_url: str):
+    def set_profile(self, display_name: str, riot_id: str, level: int, icon_bytes: bytes):
         self.riot_id.setText(riot_id if riot_id and riot_id != "—" else display_name)
         self.level.setText(f"Level: {level}")
-        pix = _pixmap_from_url(icon_url, 72)
-        if not pix.isNull():
-            self.icon.setPixmap(pix)
+        pix = _pixmap_from_bytes(icon_bytes, 72)
+        self.icon.setPixmap(pix if not pix.isNull() else QPixmap())
 
-    def set_rank_emblem(self, emblem_url: str):
-        pix = _pixmap_from_url(emblem_url, 90)
-        if not pix.isNull():
-            self.rank_emblem.setPixmap(pix)
+    def set_rank_emblem_bytes(self, emblem_bytes: bytes):
+        pix = _pixmap_from_bytes(emblem_bytes, 72, crop_transparent=True)
+        self.rank_emblem.setPixmap(pix if not pix.isNull() else QPixmap())
 
     def clear_rank_emblem(self):
         self.rank_emblem.setPixmap(QPixmap())
@@ -669,22 +646,34 @@ class MainWindow(QMainWindow):
         best_kda: Optional[float],
     ):
         self.s_wl.setText(f"W/L: {wins10}/{losses10}" if wins10 is not None else "W/L: —")
-        self.s_avgcs.setText(f"Avg CS: {avg_cs:.0f}" if avg_cs is not None else "Avg CS: —")
+
+        # ✅ display avg CS per minute (avg_cs is avg CS/game, avg_dur is avg minutes/game)
+        if avg_cs is not None and avg_dur and avg_dur > 0:
+            cs_per_min = avg_cs / avg_dur
+            self.s_avgcs.setText(f"Avg CS/min: {cs_per_min:.2f}")
+        else:
+            self.s_avgcs.setText("Avg CS/min: —")
+
         self.s_avgdur.setText(f"Avg Dur: {avg_dur:.0f}m" if avg_dur is not None else "Avg Dur: —")
         self.s_bestkda.setText(f"Best KDA: {best_kda:.2f}" if best_kda is not None else "Best KDA: —")
 
-    def set_top_champs(self, champs: List[Tuple[str, str, int]]):
+    def set_top_champs(self, champs: List[Tuple[str, bytes, int]]):
         for i in range(3):
             icon_lbl = self.champ_icon_labels[i]
             cnt_lbl = self.champ_count_labels[i]
             if i < len(champs):
-                _, icon_url, count = champs[i]
-                pix = _pixmap_from_url(icon_url, 56) if icon_url else QPixmap()
+                _, icon_bytes, count = champs[i]
+                pix = _pixmap_from_bytes(icon_bytes, 56)
                 icon_lbl.setPixmap(pix if not pix.isNull() else QPixmap())
                 cnt_lbl.setText(f"x{count}")
             else:
                 icon_lbl.setPixmap(QPixmap())
                 cnt_lbl.setText("—")
+
+    def _set_games_table_fixed_rows(self, n: int):
+        header_h = self.table.horizontalHeader().height()
+        row_h = self.table.verticalHeader().defaultSectionSize()
+        self.table.setFixedHeight(header_h + (row_h * n) + 2)
 
     def set_matches(self, rows: List[MatchRow]):
         self.table.setRowCount(0)
@@ -699,10 +688,8 @@ class MainWindow(QMainWindow):
             icon_widget = QLabel()
             icon_widget.setFixedSize(40, 40)
             icon_widget.setAlignment(Qt.AlignCenter)
-            if row.champ_icon_url:
-                pix = _pixmap_from_url(row.champ_icon_url, 40)
-                if not pix.isNull():
-                    icon_widget.setPixmap(pix)
+            pix = _pixmap_from_bytes(row.champ_icon_bytes, 40)
+            icon_widget.setPixmap(pix if not pix.isNull() else QPixmap())
             self.table.setCellWidget(r, 0, icon_widget)
 
             wl_text = "WIN" if row.win else "LOSS"
@@ -728,3 +715,5 @@ class MainWindow(QMainWindow):
             dur_item = QTableWidgetItem(f"{row.duration_min}m")
             dur_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(r, 4, dur_item)
+
+        self._set_games_table_fixed_rows(10)
