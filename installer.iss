@@ -1,5 +1,5 @@
 #define MyAppName "Despectus"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "Despectus"
 #define MyAppExeName "Despectus.exe"
 
@@ -12,7 +12,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer_out
-OutputBaseFilename=Despectus-Setup-1.0.2
+OutputBaseFilename=Despectus-Setup-1.0.3
 Compression=lzma
 SolidCompression=yes
 SetupIconFile=assets\despectus.ico
@@ -28,7 +28,7 @@ Name: "{userappdata}\Despectus"
 Source: "dist\Despectus\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 ; Template config to AppData (only if not already there)
-Source: "config_template\.env"; DestDir: "{userappdata}\Despectus"; DestName: ".env"; Flags: onlyifdoesntexist ignoreversion
+Source: "config_template\.env.example"; DestDir: "{app}"; DestName: ".env"; Flags: onlyifdoesntexist ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

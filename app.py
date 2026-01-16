@@ -39,7 +39,7 @@ from updater import fetch_latest_release, pick_installer_asset, is_newer, downlo
 # =========================
 # CONFIG (EDIT THESE)
 # =========================
-APP_VERSION = "1.0.2"      # must match your installed version/tag
+APP_VERSION = "1.0.3"      # must match your installed version/tag
 GITHUB_OWNER = "angelsarenotreal"         # e.g. "yourgithubname"
 GITHUB_REPO = "Despectus"          # e.g. "Despectus"
 # =========================
