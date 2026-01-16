@@ -31,6 +31,7 @@ from ddragon import (
 )
 from model import RankedSnapshot, MatchRow
 from ui_main import MainWindow
+from typing import List
 
 from updater import fetch_latest_release, pick_installer_asset, is_newer, download_file, run_installer
 
@@ -325,7 +326,8 @@ def main():
     dispatcher = Dispatcher()
 
     # keep references (prevents GC)
-    win._threads: List[object] = []
+    win._threads = []  # type: List[object]
+
 
     def track(*objs: object):
         for o in objs:
