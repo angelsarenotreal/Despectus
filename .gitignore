@@ -21,3 +21,5 @@ installer_out/
 # OS
 .DS_Store
 Thumbs.db
+
+!Despectus.spec
