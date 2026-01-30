@@ -8,7 +8,7 @@ A dark themed League of Legends dashboard.
 - Displays **Riot ID, profile icon, and summoner level**
 - Uses **personal Riot API keys** (per user)
 
-#### [Ranked Overview] (there is an issue with the "To next division", will be resolved soon)
+#### [Ranked Overview]
 - Shows **current Solo/Duo rank**, LP, winrate, and W/L
 - Dynamically calculates **“To next” division** (e.g. *Platinum II → Platinum I*, *Master → Grandmaster*)
 - Displays **rank emblem** when ranked (hidden if Unranked)
@@ -35,10 +35,6 @@ A dark themed League of Legends dashboard.
 #### [Privacy]
 - Runs **100% locally**
 - No tracking, no ads, no external servers
-
-#### [Updates] (implemented soon)
-- Despectus is distributed through **GitHub Releases**.  
-- Download and install the latest version to update.
 
 ## Download
 Go to the **Releases** page and download `Despectus-Setup-*.exe`.
